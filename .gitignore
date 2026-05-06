@@ -1,0 +1,8 @@
+*.keras
+venv/
+__pycache__/
+*.pyc
+captcha_images/
+uploads/
+CaptchaImageDataset.zip
+CUsersMeghanaDownloadsapp.py.lnk
