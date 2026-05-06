@@ -5,23 +5,37 @@ from flask import Flask, request, jsonify, render_template
 from werkzeug.utils import secure_filename
 import tensorflow as tf
 from tensorflow import keras
-import gdown
 
-# ── Model download config ──────────────────────────────────────
-MODEL_PATH        = 'best_captcha_model.keras'
-CHAR_MAPPING_PATH = 'char_mapping.json'
-FILE_ID           = "1LtJQdMp1QKtj0rwF5sVOfYE_-eDh__xn"
-
-if not os.path.exists(MODEL_PATH):
-    print("Downloading model from Google Drive...")
-    gdown.download(f"https://drive.google.com/uc?id={ "1LtJQdMp1QKtj0rwF5sVOfYE_-eDh__xn"}", MODEL_PATH, quiet=False)
-
-# ── Flask app ──────────────────────────────────────────────────
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+MODEL_PATH        = 'best_captcha_model.keras'
+CHAR_MAPPING_PATH = 'char_mapping.json'
+
+model       = None
+num_to_char = None
+IMG_HEIGHT  = 50
+IMG_WIDTH   = 200
+CAPTCHA_LEN = 6
+
+def load_resources():
+    global model, num_to_char, IMG_HEIGHT, IMG_WIDTH, CAPTCHA_LEN
+    try:
+        model = keras.models.load_model(MODEL_PATH)
+        print("✅ Model loaded!")
+        with open(CHAR_MAPPING_PATH, 'r') as f:
+            mapping = json.load(f)
+        raw = mapping.get('num_to_char', mapping)
+        num_to_char = {int(k): v for k, v in raw.items()}
+        IMG_HEIGHT  = int(mapping.get('img_height',    IMG_HEIGHT))
+        IMG_WIDTH   = int(mapping.get('img_width',     IMG_WIDTH))
+        CAPTCHA_LEN = int(mapping.get('captcha_length', CAPTCHA_LEN))
+        print(f"✅ Mapping loaded! {len(num_to_char)} chars | {IMG_HEIGHT}x{IMG_WIDTH} | length {CAPTCHA_LEN}")
+    except Exception as e:
+        print(f"⚠️  Startup error: {e}")
 
 load_resources()
 
