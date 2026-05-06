@@ -3,4 +3,5 @@ werkzeug
 numpy
 pillow
 gunicorn
-tensorflow-cpu
+gdown
+tensorflow==2.15.0
