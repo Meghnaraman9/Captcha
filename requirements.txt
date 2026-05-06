@@ -4,4 +4,4 @@ numpy
 pillow
 gunicorn
 gdown
-tensorflow
+tensorflow-cpu==2.13.0
