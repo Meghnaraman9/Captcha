@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CaptchaX — Neural CAPTCHA Solver</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Syne:wght@400;600;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #07080d; --surface: #0e1018; --border: #1e2230;
+      --accent: #00f5c4; --accent2: #6c63ff; --warn: #ff4f6b;
+      --text: #e2e8f0; --muted: #6b7280;
+      --mono: 'Share Tech Mono', monospace; --sans: 'Syne', sans-serif;
+    }
+    html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); overflow-x: hidden; }
+    body::before {
+      content: ''; position: fixed; inset: 0;
+      background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 48px 48px; opacity: .3; pointer-events: none; z-index: 0;
+    }
+    body::after {
+      content: ''; position: fixed; top: -200px; left: 50%; transform: translateX(-50%);
+      width: 700px; height: 700px;
+      background: radial-gradient(circle, rgba(0,245,196,.07) 0%, transparent 70%);
+      pointer-events: none; z-index: 0; animation: pulse 6s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:.6;transform:translateX(-50%) scale(1)} 50%{opacity:1;transform:translateX(-50%) scale(1.1)} }
+    .wrapper { position: relative; z-index: 1; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 0 1rem 4rem; }
+
+    header { width:100%; max-width:860px; padding:2.5rem 0 1.5rem; display:flex; align-items:center; gap:1rem; border-bottom:1px solid var(--border); margin-bottom:3rem; }
+    .logo-badge { width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;font-family:var(--mono);font-size:.75rem;color:#07080d;font-weight:700;flex-shrink:0;box-shadow:0 0 24px rgba(0,245,196,.3); }
+    .logo-text h1 { font-size:1.5rem;font-weight:800;letter-spacing:-.02em;line-height:1; }
+    .logo-text h1 span { color:var(--accent); }
+    .logo-text p { font-size:.75rem;color:var(--muted);font-family:var(--mono);margin-top:.2rem; }
+    .status-pill { margin-left:auto;font-family:var(--mono);font-size:.7rem;padding:.35rem .9rem;border-radius:999px;background:rgba(0,245,196,.08);border:1px solid rgba(0,245,196,.2);color:var(--accent);display:flex;align-items:center;gap:.5rem; }
+    .status-pill .dot { width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);animation:blink 2s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    .card { width:100%;max-width:700px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:2.5rem;position:relative;overflow:hidden; }
+    .card::before { content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent); }
+    .card-title { font-size:1.1rem;font-weight:600;margin-bottom:.3rem; }
+    .card-sub { font-size:.78rem;color:var(--muted);font-family:var(--mono);margin-bottom:1.8rem; }
+
+    #dropzone { border:2px dashed var(--border);border-radius:14px;padding:2.5rem 2rem;text-align:center;cursor:pointer;transition:border-color .25s,background .25s;position:relative; }
+    #dropzone.dragover { border-color:var(--accent);background:rgba(0,245,196,.04); }
+    #dropzone input[type="file"] { position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%; }
+    .drop-icon { font-size:2.5rem;margin-bottom:.8rem;display:block;animation:float 3s ease-in-out infinite; }
+    @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+    .drop-label { font-size:.95rem;font-weight:600;margin-bottom:.3rem; }
+    .drop-hint { font-size:.72rem;color:var(--muted);font-family:var(--mono); }
+
+    #preview-section { display:none;margin-top:1.2rem; }
+    .preview-wrap { background:#111320;border:1px solid var(--border);border-radius:10px;padding:.9rem;display:flex;align-items:center;gap:1rem; }
+    #preview-img { max-height:65px;max-width:200px;border-radius:6px;border:1px solid var(--border);object-fit:contain; }
+    .preview-meta { flex:1; }
+    .preview-name { font-size:.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px; }
+    .preview-size { font-size:.72rem;color:var(--muted);font-family:var(--mono);margin-top:.2rem; }
+    .btn-remove { background:none;border:none;color:var(--warn);cursor:pointer;font-size:1.1rem;padding:.3rem;border-radius:6px;transition:background .2s; }
+    .btn-remove:hover { background:rgba(255,79,107,.1); }
+
+    #solve-btn { width:100%;margin-top:1.4rem;padding:1rem;background:linear-gradient(135deg,var(--accent),#00c49a);color:#07080d;border:none;border-radius:12px;font-family:var(--sans);font-weight:700;font-size:1rem;cursor:pointer;transition:opacity .2s,transform .15s,box-shadow .2s;box-shadow:0 4px 24px rgba(0,245,196,.25);display:flex;align-items:center;justify-content:center;gap:.6rem; }
+    #solve-btn:hover:not(:disabled) { transform:translateY(-2px);box-shadow:0 8px 32px rgba(0,245,196,.4); }
+    #solve-btn:disabled { opacity:.5;cursor:not-allowed; }
+
+    /* ── Result ── */
+    #result-section { display:none;margin-top:2rem; }
+    .result-label { font-family:var(--mono);font-size:.7rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:.6rem; }
+
+    /* Per-char boxes */
+    .chars-row { display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap; }
+    .char-box {
+      flex:1;min-width:60px;background:#0a0c14;border:1px solid var(--border);
+      border-radius:10px;padding:.7rem .5rem;text-align:center;cursor:pointer;
+      transition:border-color .2s,background .2s;position:relative;
+    }
+    .char-box:hover { border-color:var(--accent);background:rgba(0,245,196,.05); }
+    .char-box.toggled { border-color:var(--accent2);background:rgba(108,99,255,.08); }
+    .char-main { font-family:var(--mono);font-size:1.6rem;font-weight:700;color:var(--accent);line-height:1; }
+    .char-box.toggled .char-main { color:var(--accent2); }
+    .char-conf { font-family:var(--mono);font-size:.6rem;color:var(--muted);margin-top:.3rem; }
+    .char-alt { font-family:var(--mono);font-size:.6rem;color:var(--accent2);margin-top:.15rem; }
+    .char-tip { font-size:.55rem;color:var(--muted);margin-top:.2rem;font-family:var(--mono); }
+
+    .result-combined { background:#0a0c14;border:1px solid var(--border);border-radius:12px;padding:1.2rem 1.5rem;display:flex;align-items:center;justify-content:space-between;gap:1rem; }
+    .result-text { font-family:var(--mono);font-size:2rem;font-weight:700;color:var(--accent);letter-spacing:.15em;text-shadow:0 0 20px rgba(0,245,196,.3); }
+    .result-text.error-text { color:var(--warn);font-size:1rem;letter-spacing:0; }
+    .btn-copy { background:rgba(0,245,196,.08);border:1px solid rgba(0,245,196,.2);color:var(--accent);border-radius:8px;padding:.5rem .9rem;font-family:var(--mono);font-size:.72rem;cursor:pointer;transition:background .2s;white-space:nowrap; }
+    .btn-copy:hover { background:rgba(0,245,196,.15); }
+
+    .hint-text { font-size:.72rem;color:var(--muted);font-family:var(--mono);margin-top:.8rem;text-align:center; }
+    .hint-text span { color:var(--accent2); }
+
+    .spinner { width:20px;height:20px;border:2px solid rgba(7,8,13,.4);border-top-color:#07080d;border-radius:50%;animation:spin .7s linear infinite; }
+    @keyframes spin { to{transform:rotate(360deg)} }
+
+    .how-section { width:100%;max-width:700px;margin-top:2.5rem; }
+    .how-title { font-family:var(--mono);font-size:.7rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem; }
+    .steps { display:grid;grid-template-columns:repeat(3,1fr);gap:1rem; }
+    .step { background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:1.2rem; }
+    .step-num { font-family:var(--mono);font-size:.65rem;color:var(--accent);margin-bottom:.5rem; }
+    .step-title { font-size:.85rem;font-weight:600;margin-bottom:.3rem; }
+    .step-desc { font-size:.72rem;color:var(--muted);line-height:1.5; }
+    footer { margin-top:3rem;font-size:.72rem;font-family:var(--mono);color:var(--muted);text-align:center; }
+    footer span { color:var(--accent); }
+    @media(max-width:600px){.steps{grid-template-columns:1fr}.chars-row{gap:.3rem}.char-main{font-size:1.3rem}}
+  </style>
+</head>
+<body>
+<div class="wrapper">
+  <header>
+    <div class="logo-badge">CTX</div>
+    <div class="logo-text">
+      <h1>Captcha<span>X</span></h1>
+      <p>Neural CAPTCHA Recognition Engine</p>
+    </div>
+    <div class="status-pill" id="status-pill">
+      <span class="dot"></span><span id="status-text">Checking…</span>
+    </div>
+  </header>
+
+  <div class="card">
+    <div class="card-title">Upload a CAPTCHA Image</div>
+    <div class="card-sub">// Drop any CAPTCHA — the model decodes it instantly</div>
+
+    <div id="dropzone">
+      <input type="file" id="file-input" accept="image/*" />
+      <span class="drop-icon">🔍</span>
+      <div class="drop-label">Drop image here or click to browse</div>
+      <div class="drop-hint">PNG · JPG · GIF · BMP &nbsp;|&nbsp; max 5 MB</div>
+    </div>
+
+    <div id="preview-section">
+      <div class="preview-wrap">
+        <img id="preview-img" src="" alt="Preview" />
+        <div class="preview-meta">
+          <div class="preview-name" id="preview-name">—</div>
+          <div class="preview-size" id="preview-size">—</div>
+        </div>
+        <button class="btn-remove" id="remove-btn">✕</button>
+      </div>
+    </div>
+
+    <button id="solve-btn" disabled>
+      <span id="btn-icon">⚡</span><span id="btn-text">Solve CAPTCHA</span>
+    </button>
+
+    <div id="result-section">
+      <div class="result-label">// Per-Character Breakdown — click any box to toggle case</div>
+      <div class="chars-row" id="chars-row"></div>
+
+      <div class="result-combined">
+        <span class="result-text" id="result-text">——</span>
+        <button class="btn-copy" id="copy-btn">Copy</button>
+      </div>
+      <div class="hint-text">💡 Click a character box above to toggle <span>uppercase ↔ lowercase</span>. The result updates automatically.</div>
+    </div>
+  </div>
+
+  <div class="how-section">
+    <div class="how-title">// How it works</div>
+    <div class="steps">
+      <div class="step"><div class="step-num">01 —</div><div class="step-title">Upload Image</div><div class="step-desc">Drop any CAPTCHA image from your machine.</div></div>
+      <div class="step"><div class="step-num">02 —</div><div class="step-title">CNN Model</div><div class="step-desc">6 output heads predict each character independently.</div></div>
+      <div class="step"><div class="step-num">03 —</div><div class="step-title">Toggle Case</div><div class="step-desc">Click any character to flip between upper and lowercase.</div></div>
+    </div>
+  </div>
+  <footer>Built with <span>TensorFlow · Keras · Flask</span> — CaptchaX &copy; 2026</footer>
+</div>
+
+<script>
+  const dropzone    = document.getElementById('dropzone');
+  const fileInput   = document.getElementById('file-input');
+  const previewSec  = document.getElementById('preview-section');
+  const previewImg  = document.getElementById('preview-img');
+  const previewName = document.getElementById('preview-name');
+  const previewSize = document.getElementById('preview-size');
+  const removeBtn   = document.getElementById('remove-btn');
+  const solveBtn    = document.getElementById('solve-btn');
+  const btnIcon     = document.getElementById('btn-icon');
+  const btnText     = document.getElementById('btn-text');
+  const resultSec   = document.getElementById('result-section');
+  const resultText  = document.getElementById('result-text');
+  const copyBtn     = document.getElementById('copy-btn');
+  const charsRow    = document.getElementById('chars-row');
+
+  let selectedFile = null;
+  let charStates   = [];   // array of {char, alt, toggled}
+
+  // ── Health check ──────────────────────────────────────────────
+  (async () => {
+    try {
+      const d = await (await fetch('/health')).json();
+      const pill = document.getElementById('status-pill');
+      const txt  = document.getElementById('status-text');
+      if (d.model_loaded) {
+        txt.textContent = `Model ready · ${d.chars} chars`;
+      } else {
+        pill.style.cssText += ';background:rgba(255,79,107,.08);border-color:rgba(255,79,107,.2);color:var(--warn)';
+        pill.querySelector('.dot').style.cssText = 'background:var(--warn);box-shadow:0 0 8px var(--warn)';
+        txt.textContent = 'Model not loaded';
+      }
+    } catch {}
+  })();
+
+  // ── File selection ────────────────────────────────────────────
+  function setFile(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    selectedFile = file;
+    const reader = new FileReader();
+    reader.onload = e => { previewImg.src = e.target.result; };
+    reader.readAsDataURL(file);
+    previewName.textContent = file.name;
+    previewSize.textContent = (file.size / 1024).toFixed(1) + ' KB';
+    previewSec.style.display = 'block';
+    solveBtn.disabled = false;
+    resultSec.style.display = 'none';
+  }
+
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+  dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+  dropzone.addEventListener('drop', e => { e.preventDefault(); dropzone.classList.remove('dragover'); setFile(e.dataTransfer.files[0]); });
+  removeBtn.addEventListener('click', () => {
+    selectedFile = null; fileInput.value = '';
+    previewSec.style.display = resultSec.style.display = 'none';
+    solveBtn.disabled = true;
+  });
+
+  // ── Build per-char UI ─────────────────────────────────────────
+  function buildCharsUI(chars) {
+    charStates = chars.map(c => ({ char: c.char, alt: c.alt, conf: c.conf, alt_conf: c.alt_conf, toggled: false }));
+    renderChars();
+  }
+
+  function renderChars() {
+    charsRow.innerHTML = '';
+    charStates.forEach((state, i) => {
+      const box = document.createElement('div');
+      box.className = 'char-box' + (state.toggled ? ' toggled' : '');
+
+      const displayChar = state.toggled
+        ? (state.char === state.char.toUpperCase() ? state.char.toLowerCase() : state.char.toUpperCase())
+        : state.char;
+
+      box.innerHTML = `
+        <div class="char-main">${displayChar}</div>
+        <div class="char-conf">${state.conf}%</div>
+        <div class="char-alt">alt: ${state.alt} (${state.alt_conf}%)</div>
+        <div class="char-tip">click to flip</div>
+      `;
+      box.addEventListener('click', () => {
+        charStates[i].toggled = !charStates[i].toggled;
+        renderChars();
+        updateResultText();
+      });
+      charsRow.appendChild(box);
+    });
+    updateResultText();
+  }
+
+  function updateResultText() {
+    const text = charStates.map(state => {
+      if (state.toggled) {
+        return state.char === state.char.toUpperCase() ? state.char.toLowerCase() : state.char.toUpperCase();
+      }
+      return state.char;
+    }).join('');
+    resultText.textContent = text;
+    resultText.className = 'result-text';
+  }
+
+  // ── Solve ─────────────────────────────────────────────────────
+  solveBtn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+    solveBtn.disabled = true;
+    btnIcon.innerHTML = '<div class="spinner"></div>';
+    btnText.textContent = 'Solving…';
+    resultSec.style.display = 'none';
+
+    const fd = new FormData();
+    fd.append('file', selectedFile);
+
+    try {
+      const data = await (await fetch('/predict', { method: 'POST', body: fd })).json();
+      resultSec.style.display = 'block';
+      if (data.success) {
+        buildCharsUI(data.chars);
+      } else {
+        charsRow.innerHTML = '';
+        resultText.textContent = data.error || 'Unknown error';
+        resultText.className = 'result-text error-text';
+      }
+    } catch {
+      resultSec.style.display = 'block';
+      charsRow.innerHTML = '';
+      resultText.textContent = 'Network error — is Flask running?';
+      resultText.className = 'result-text error-text';
+    }
+
+    btnIcon.textContent = '⚡';
+    btnText.textContent = 'Solve CAPTCHA';
+    solveBtn.disabled = false;
+  });
+
+  // ── Copy ──────────────────────────────────────────────────────
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(resultText.textContent).then(() => {
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+    });
+  });
+</script>
+</body>
+</html>
